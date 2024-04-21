@@ -26,6 +26,7 @@ provide("imageManager", imageManager)
     </el-aside>
     <el-main>
       <work-canvas v-show="currentImageNode"/>
+      <ChatRoom v-show="!currentImageNode"/>
     </el-main>
   </el-container>
 </template>
