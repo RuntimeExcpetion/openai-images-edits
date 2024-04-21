@@ -1,22 +1,21 @@
 <script setup lang="ts">
 import ImageWall from "./components/ImageWall.vue"
 import WorkCanvas from "./components/WorkCanvas.vue"
-import { ImageSrc, ImageManager } from './types/ImageManager'
+import { ImageNode, ImageManager } from './types/ImageManager'
 import type {Ref} from "vue";
 
-const currentImageSrc: Ref<ImageSrc> = ref("");
+const currentImageNode: Ref<undefined | ImageNode> = ref();
 
-const setImageSrc: (newSrc: string) => void = (newSrc: string) => {
-  currentImageSrc.value = newSrc;
+const updateImageNode: (imageNode: ImageNode) => void = (imageNode: ImageNode) => {
+  currentImageNode.value = imageNode;
 }
 
 const imageManager: ImageManager = {
-  imageSrc: currentImageSrc,
-  updateImageSrc: setImageSrc
+  imageNode: currentImageNode as Ref<ImageNode>,
+  updateImageNode: updateImageNode
 }
 
-provide("imageSrcManager", imageManager)
-
+provide("imageManager", imageManager)
 
 </script>
 
@@ -26,7 +25,7 @@ provide("imageSrcManager", imageManager)
       <image-wall></image-wall>
     </el-aside>
     <el-main>
-      <work-canvas v-show="currentImageSrc"/>
+      <work-canvas v-show="currentImageNode"/>
     </el-main>
   </el-container>
 </template>

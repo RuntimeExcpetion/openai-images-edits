@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import {ImageManager} from "@/types/ImageManager";
+import {ImageManager, ImageNode} from "@/types/ImageManager";
 import {DrawCommand} from "@/types/DrawCommand";
 import {ArrowLeftBold, ArrowRightBold, EditPen, Refresh} from "@element-plus/icons-vue";
+import {addCanvasCommandHistory, getCanvasCommandHistory} from "@/stores/useDatabase";
 
-const {imageSrc} = inject<ImageManager>('imageSrcManager') as ImageManager;
+const {imageNode} = inject<ImageManager>('imageManager') as ImageManager;
 
 // 定义变量
 const canvasWrapper = ref<HTMLDivElement>();
@@ -12,7 +13,7 @@ const drawingCanvas = ref<HTMLCanvasElement>();
 const bgCtx = ref<CanvasRenderingContext2D>();
 const drawingCtx = ref<CanvasRenderingContext2D>();
 // 命令列表
-const drawCommand = ref<DrawCommand[]>([]);
+const drawCommand: Ref<DrawCommand[]> = ref([]);
 // 当前命令索引
 const currentCommandIndex = ref<number>(0);
 // 画笔大小
@@ -56,20 +57,55 @@ const loadAndDrawImage = (src: string) => {
       drawingCanvas.value.width = scaleWidth;
       drawingCanvas.value.height = scaleHeight;
       bgCtx.value?.drawImage(img, 0, 0, scaleWidth, scaleHeight);
-      // saveHistory(backgroundCanvas.value!);
-      // 绘制遮罩
-      drawMask(null, drawingCanvas.value, drawingCtx.value);
+      // 重绘画布
+      redrawCanvas(drawingCanvas.value!, drawCommand.value, 0, currentCommandIndex.value);
     }
   };
   img.src = src;
 }
 
-// 监听imageSrc变化，加载并绘制图片
-watchEffect(() => {
-  if (imageSrc.value) {
-    loadAndDrawImage(imageSrc.value);
+/**
+ * 保存历史记录
+ */
+const saveHistory = async (nodeId: number = imageNode.value.id) => {
+  const commands: DrawCommand[] = drawCommand.value.map((cmd, _) => {
+    const newParams: any = {};
+    for (const key in cmd.params) {
+      newParams[key] = cmd.params[key];
+    }
+    return {
+      type: cmd.type,
+      params: newParams,
+    }
+  });
+  await addCanvasCommandHistory(nodeId, commands, currentCommandIndex.value);
+}
+
+watch(() => imageNode.value, async (newImageNode, oldImageNode) => {
+  if (newImageNode !== oldImageNode) {
+    if (drawCommand.value.length > 0) {
+      await saveHistory(oldImageNode!.id);
+    }
+    const canvasCommandHistory = await getCanvasCommandHistory(imageNode.value.id);
+    if (canvasCommandHistory) {
+      drawCommand.value = canvasCommandHistory.history;
+      currentCommandIndex.value = canvasCommandHistory.current;
+    } else {
+      drawCommand.value = [];
+      currentCommandIndex.value = 0;
+    }
+    loadAndDrawImage(newImageNode.src);
+    console.log('image loaded', imageNode.value.id, drawCommand.value, currentCommandIndex.value);
   }
-});
+}, {immediate: true});
+
+
+onBeforeUnmount(() => {
+  // 组件销毁时保存历史记录
+  if (drawCommand.value.length > 0) {
+    saveHistory();
+  }
+})
 
 /**
  * 绘制遮罩
@@ -166,6 +202,10 @@ const stopDrawing = () => {
   drawingCtx.value?.beginPath(); // 重置路径
 }
 
+/**
+ * 撤销
+ * @param step 步数，默认为1
+ */
 const undo = (step: number = 1) => {
   if (currentCommandIndex.value >= 0) {
     currentCommandIndex.value += step;
@@ -173,10 +213,16 @@ const undo = (step: number = 1) => {
   }
 }
 
+/**
+ * 改变当前命令索引
+ */
 const changCurrentCommandIndex = () => {
   redrawCanvas(drawingCanvas.value!, drawCommand.value, 0, currentCommandIndex.value); // 重绘画布
 }
 
+/**
+ * 清空画布
+ */
 const clearCanvas = () => {
   drawCommand.value = [];
   currentCommandIndex.value = 0;
@@ -214,7 +260,6 @@ const updateBrushSize = () => {
   // 应用新光标样式
   drawingCanvas.value!.style.cursor = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewport="0 0 ${size} ${size}" style="fill:black;font-size:24px;"><circle cx="${radius}" cy="${radius}" r="${radius - 1}" stroke="black" stroke-width="2" fill="none" /></svg>') ${radius} ${radius}, auto`;
 }
-
 
 onMounted(() => {
   updateBrushSize();

@@ -1,20 +1,23 @@
 <script setup lang="ts">
 
 import {DeleteFilled} from "@element-plus/icons-vue"
-import {ImageManager} from "@/types/ImageManager"
+import {ImageManager, ImageNode} from "@/types/ImageManager"
+import {addImage, getAllImages, deleteImage} from '@/stores/useDatabase';
+
 
 // 注入imageSrcManager
-const {updateImageSrc} = inject('imageSrcManager') as ImageManager
+const {updateImageNode} = inject('imageManager') as ImageManager
 /**
  * 选择图片
- * @param imageSrc 图片地址
+ * @param imageNode 图片节点信息
  */
-const selectImage = (imageSrc: string) => {
-  updateImageSrc(imageSrc)
+const selectImage = (imageNode: ImageNode) => {
+  // 调用updateImageNode方法，更新imageSrcManager中的图片节点信息
+  updateImageNode(imageNode)
 }
 
 // 定义一个变量，用于存储图片列表
-const imageList = ref<string[]>([])
+const imageList = ref<{ src: string, id: number }[]>([])
 
 /**
  * 处理拖拽事件
@@ -44,20 +47,17 @@ const handleDrop = (event: DragEvent) => {
  * 添加文件到图片列表中
  * @param files 文件列表
  */
-const addFilesToImageList = (files: FileList) => {
+const addFilesToImageList = async (files: FileList) => {
   // 遍历文件列表
   for (let i = 0; i < files.length; i++) {
     // 获取文件
     const file = files[i];
     // 如是图片文件，则添加到图片列表中
     if (file.type.startsWith('image/')) {
-      // 读取文件内容
-      // 这里使用FileReader读取文件内容，将结果添加到图片列表中
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        imageList.value.push(reader.result as string);
-      };
+      const blob = await file.arrayBuffer().then(buffer => new Blob([buffer]));
+      const id = await addImage(blob);
+      const url = URL.createObjectURL(blob);
+      imageList.value.push({src: url, id});
     }
   }
 }
@@ -67,6 +67,9 @@ const addFilesToImageList = (files: FileList) => {
  * @param index 图片索引
  */
 const removeImage = (index: number) => {
+  // 删除数据库中的图片
+  deleteImage(imageList.value[index].id);
+  // 删除图片列表中的图片
   imageList.value.splice(index, 1);
 }
 
@@ -75,7 +78,17 @@ const removeImage = (index: number) => {
  */
 const isImageWallEmpty = computed(() => {
   return imageList.value.length === 0
-})
+});
+
+onMounted(() => {
+  getAllImages().then(images => {
+    for (let i = 0; i < images.length; i++) {
+      const id = images[i].id;
+      const url = URL.createObjectURL(images[i].blob);
+      imageList.value.push({src: url, id});
+    }
+  });
+});
 </script>
 
 <template>
@@ -85,7 +98,7 @@ const isImageWallEmpty = computed(() => {
       <el-badge :value="index + 1"
                 dot-style=" top: 0;left: 50%;transform: translateY(-50%) translateX(-50%); right:unset;"
                 type="primary">
-        <el-image @click="selectImage(item)" :src="item" fit="scale-down"></el-image>
+        <el-image @click="selectImage(item)" :src="item.src" fit="scale-down"></el-image>
         <el-popconfirm @confirm="removeImage(index)"
                        confirm-button-text="是"
                        cancel-button-text="否"
